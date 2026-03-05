@@ -56,22 +56,43 @@ export default async function handler(req, res) {
     return null;
   }
 
+  // Decode HTML entities and strip all tags from text
+  function cleanText(str) {
+    if (!str) return "";
+    return str
+      .replace(/<[^>]+>/g, " ")           // strip HTML tags
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, "\"")
+      .replace(/&#39;/g, "'")
+      .replace(/&apos;/g, "'")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&#\d+;/g, "")             // strip numeric entities
+      .replace(/&[a-z]+;/g, "")           // strip any remaining named entities
+      .replace(/\s+/g, " ")               // collapse whitespace
+      .trim();
+  }
+
   function parseRSS(xml, sourceName) {
     const items = [];
     const itemMatches = xml.match(/<item>([\s\S]*?)<\/item>/g) || [];
     itemMatches.slice(0, 8).forEach(item => {
-      const title = (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) ||
-                     item.match(/<title>(.*?)<\/title>/))?.[1]?.trim();
+      const title = cleanText(
+        (item.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>/) ||
+         item.match(/<title>(.*?)<\/title>/))?.[1]
+      );
       const link  = (item.match(/<link>(.*?)<\/link>/) ||
                      item.match(/<guid>(https?[^<]+)<\/guid>/))?.[1]?.trim();
-      const desc  = (item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) ||
-                     item.match(/<description>(.*?)<\/description>/))?.[1]
-                    ?.replace(/<[^>]+>/g, "").trim().slice(0, 200);
+      const rawDesc = (item.match(/<description><!\[CDATA\[(.*?)\]\]><\/description>/) ||
+                       item.match(/<content:encoded><!\[CDATA\[(.*?)\]\]><\/content:encoded>/) ||
+                       item.match(/<description>(.*?)<\/description>/))?.[1] || "";
+      const desc = cleanText(rawDesc).slice(0, 220);
       const pubDate = item.match(/<pubDate>(.*?)<\/pubDate>/)?.[1]?.trim();
       const image = extractImage(item);
       if (title && link && !title.includes("<?xml")) {
         items.push({
-          title, url: link, description: desc || "",
+          title, url: link, description: desc,
           publishedAt: pubDate ? new Date(pubDate).toISOString() : new Date().toISOString(),
           image, source: { name: sourceName }
         });
